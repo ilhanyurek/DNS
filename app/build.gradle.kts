@@ -13,18 +13,23 @@ android {
         applicationId = "com.ilhanyurek.privatednstiles"
         minSdk = 28
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
 
+    // The keystore is provided by CI from GitHub Secrets (never committed).
+    // It is written to app/release.keystore and the passwords come from env vars.
+    val keystoreFile = file("release.keystore")
+    val hasKeystore = keystoreFile.exists()
+
     signingConfigs {
-        // Stable self-signed key so release builds install over each other.
-        // Fine for a personal app distributed outside Play.
-        create("release") {
-            storeFile = file("release.keystore")
-            storePassword = "dnstiles2026"
-            keyAlias = "dnstiles"
-            keyPassword = "dnstiles2026"
+        if (hasKeystore) {
+            create("release") {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
         }
     }
 
@@ -32,7 +37,8 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            // Signed only when the keystore is present (i.e. on CI with secrets).
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

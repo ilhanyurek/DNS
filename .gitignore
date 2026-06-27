@@ -10,3 +10,8 @@
 local.properties
 /app/build
 /.kotlin
+
+# Never commit signing material – it lives in GitHub Secrets
+*.keystore
+*.jks
+keystore.properties
