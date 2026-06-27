@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private val Context.dataStore by preferencesDataStore(name = "private_dns_tiles")
