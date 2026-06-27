@@ -51,11 +51,11 @@ jobs:
           name: Latest build
           body: |
             Direct APK download (no zip):
-            https://github.com/${{ github.repository }}/releases/latest/download/PrivateDnsTiles.apk
+            https://github.com/${{ github.repository }}/releases/download/latest/PrivateDnsTiles.apk
 
             Built from ${{ github.sha }}.
 
             After installing, grant the DNS permission once via ADB:
             `adb shell pm grant com.ilhanyurek.privatednstiles android.permission.WRITE_SECURE_SETTINGS`
           files: PrivateDnsTiles.apk
-          prerelease: true
+          make_latest: "true"
