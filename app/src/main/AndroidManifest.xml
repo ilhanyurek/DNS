@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      WRITE_SECURE_SETTINGS lets the app change the global Private DNS settings.
+      It is a signature|privileged permission, so it CANNOT be granted from the
+      UI. Grant it once over ADB:
+
+        adb shell pm grant com.ilhanyurek.privatednstiles android.permission.WRITE_SECURE_SETTINGS
+    -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PrivateDnsTiles">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PrivateDnsTiles">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Transparent host for the picker tile's dialog -->
+        <activity
+            android:name=".PickerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.PrivateDnsTiles.Transparent" />
+
+        <!-- Cycles through saved DNS entries on tap -->
+        <service
+            android:name=".tile.DnsTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_dns"
+            android:label="@string/tile_cycle_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+
+        <!-- Tap opens a picker dialog to choose any saved DNS entry -->
+        <service
+            android:name=".tile.DnsPickerTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_dns_pick"
+            android:label="@string/tile_picker_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+    </application>
+
+</manifest>
