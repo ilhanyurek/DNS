@@ -13,13 +13,26 @@ android {
         applicationId = "com.ilhanyurek.privatednstiles"
         minSdk = 28
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
+    }
+
+    signingConfigs {
+        // Stable self-signed key so release builds install over each other.
+        // Fine for a personal app distributed outside Play.
+        create("release") {
+            storeFile = file("release.keystore")
+            storePassword = "dnstiles2026"
+            keyAlias = "dnstiles"
+            keyPassword = "dnstiles2026"
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -47,7 +60,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.material.icons.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.datastore.preferences)
     debugImplementation(libs.androidx.ui.tooling)

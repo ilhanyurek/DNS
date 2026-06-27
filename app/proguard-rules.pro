@@ -5,3 +5,6 @@
 -keepclasseswithmembers class com.ilhanyurek.privatednstiles.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+
+# Keep the @Serializable data models and the DnsMode enum intact
+-keep class com.ilhanyurek.privatednstiles.data.** { *; }

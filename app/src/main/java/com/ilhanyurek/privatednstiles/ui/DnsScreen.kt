@@ -14,11 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -157,10 +157,10 @@ private fun DnsCard(
                 )
             }
             IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                Icon(Icons.Default.ArrowUpward, contentDescription = "Move up")
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
             }
             IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                Icon(Icons.Default.ArrowDownward, contentDescription = "Move down")
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
             }
             IconButton(onClick = onEdit) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit")
