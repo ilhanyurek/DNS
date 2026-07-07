@@ -1,88 +1,114 @@
 # Private DNS Tiles
 
-Android uygulaması — telefon ve tablet için **Private DNS Quick Settings tiles**.
-Birden fazla DNS kaydı ekleyip Quick Settings (hızlı ayarlar) panelinden tek
-dokunuşla aralarında geçiş yapabilirsiniz.
+An Android app (phone + tablet) that adds **Private DNS Quick Settings tiles**.
+Save as many DNS entries as you like and switch between them straight from the
+Quick Settings panel — no digging through Settings each time.
 
-> An Android app that adds Quick Settings tiles to switch Private DNS. Save as
-> many DNS providers as you like and flip between them straight from the QS
-> panel — no need to dig through Settings each time.
+## Features
 
-## Özellikler / Features
+- 🔢 **Multiple DNS entries**: Off, Automatic, and as many custom DoT
+  hostnames as you want (Cloudflare, Google, AdGuard, Quad9, NextDNS, your own…).
+- ⚡ **Two Quick Settings tiles**:
+  - **DNS Cycle** — each tap switches to the next DNS in your list.
+  - **DNS Picker** — tap opens a dialog listing every entry so you can jump
+    straight to one.
+- 👆 **Long-press a tile** to open the app (instead of the system App-info screen).
+- 📱 **Phone + tablet**: responsive Jetpack Compose UI, Material 3, dynamic
+  color (Android 12+), light/dark theme.
+- ✏️ Add / edit / delete / reorder DNS entries in the app.
+- 🔒 Your data stays on device (DataStore). No internet permission.
 
-- 🔢 **Birden fazla DNS** kaydı: Off, Automatic ve istediğiniz kadar özel
-  hostname (Cloudflare, Google, AdGuard, Quad9, NextDNS… kendi sunucunuz).
-- ⚡ **İki Quick Settings tile**:
-  - **DNS Cycle** — her dokunuşta listedeki bir sonraki DNS'e geçer.
-  - **DNS Picker** — dokununca tüm kayıtların listesini açar, birini seçersiniz.
-- 📱 **Telefon + tablet**: responsive Jetpack Compose arayüz, Material 3,
-  dinamik renkler (Android 12+), açık/koyu tema.
-- ✏️ Uygulama içinden ekle / düzenle / sil / sırala.
-- 🔒 Verileriniz cihazda kalır (DataStore). İnternet izni yok.
+## How it works
 
-## Nasıl çalışır / How it works
+On Android, Private DNS is controlled by the `private_dns_mode` and
+`private_dns_specifier` values in `Settings.Global`. Changing them requires the
+`WRITE_SECURE_SETTINGS` permission, which can't be granted from the UI — it must
+be granted **once via ADB**.
 
-Android'de Private DNS, `Settings.Global` içindeki `private_dns_mode` ve
-`private_dns_specifier` değerleriyle kontrol edilir. Bunları değiştirmek
-`WRITE_SECURE_SETTINGS` iznini gerektirir; bu izin normal bir uygulamaya UI'dan
-verilemez, **bir kez ADB ile** verilmelidir.
+| Mode | `private_dns_mode` | Description |
+|------|--------------------|-------------|
+| Off | `off` | Private DNS disabled |
+| Automatic | `opportunistic` | Opportunistic DoT to the network resolver |
+| Hostname | `hostname` | A specific DoT provider (strict) |
 
-| Mod | `private_dns_mode` | Açıklama |
-|-----|--------------------|----------|
-| Off | `off` | Private DNS kapalı |
-| Automatic | `opportunistic` | Ağdaki çözücüye fırsatçı DoT |
-| Hostname | `hostname` | Belirli bir DoT sağlayıcısı (strict) |
+## Install
 
-## Kurulum / Setup
+### Download the APK (easiest)
 
-### 1. Derle (Android Studio veya CLI)
+Grab the latest signed APK directly (not zipped):
 
-```bash
-./gradlew assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+https://github.com/ilhanyurek/DNS/releases/download/latest/PrivateDnsTiles.apk
 ```
 
-> Bu repo `gradlew` wrapper'ı içerir. Android Studio'da açıp doğrudan
-> çalıştırabilirsiniz (Android SDK gerekli).
+Every push rebuilds and replaces this file, so the link always points at the
+newest build. Release page: <https://github.com/ilhanyurek/DNS/releases/tag/latest>
 
-### 2. İzni ADB ile ver (zorunlu)
+### Grant the permission via ADB (required)
 
 ```bash
 adb shell pm grant com.ilhanyurek.privatednstiles android.permission.WRITE_SECURE_SETTINGS
 ```
 
-Bu adımı yapmadan tile'lar "Needs ADB permission" gösterir ve DNS değişmez.
-İzin kalıcıdır; cihazı sıfırlamadıkça tekrar gerekmez.
+Without this, the tiles show "Needs ADB permission" and DNS won't change. The
+grant is persistent — you only do it once (until a factory reset).
 
-### 3. Tile'ları ekle
+### Add the tiles
 
-Quick Settings panelini aç → kalem/düzenle → **DNS Cycle** ve/veya
-**DNS Picker** tile'larını aktif kutucuklara sürükle.
+Open the Quick Settings panel → edit (pencil) → drag **DNS Cycle** and/or
+**DNS Picker** into the active tiles.
 
-## Kullanım / Usage
+## Usage
 
-- Uygulamayı aç, hazır gelen DNS listesini gör. **Add DNS** ile yeni hostname
-  ekle (ör. `dns.google`, `1dot1dot1dot1.cloudflare-dns.com`,
-  `xxxxxx.dns.nextdns.io`).
-- Listede bir karta dokun → o DNS hemen uygulanır.
-- Yukarı/aşağı oklarla sırayı değiştir — **DNS Cycle** tile bu sıraya göre döner.
-- QS panelinden **DNS Cycle**'a dokun: sıradaki DNS'e geç. **DNS Picker**'a
-  dokun: listeden seç.
+- Open the app to see the DNS list. Tap **Add DNS** to add a new hostname
+  (e.g. `dns.google`, `1dot1dot1dot1.cloudflare-dns.com`, `xxxxxx.dns.nextdns.io`).
+- Tap a card in the list → that DNS is applied immediately.
+- Use the up/down arrows to reorder — **DNS Cycle** follows this order.
+- From Quick Settings: tap **DNS Cycle** to advance to the next entry, or tap
+  **DNS Picker** to choose one from a list. Long-press either tile to open the app.
 
-## Proje yapısı / Project layout
+## Build from source
+
+The repo ships a Gradle wrapper, so you can open it in Android Studio and run,
+or build from the CLI (Android SDK required):
+
+```bash
+./gradlew assembleRelease
+# APK: app/build/outputs/apk/release/app-release.apk
+```
+
+### CI & signing
+
+`.github/workflows/build.yml` builds a minified, resource-shrunk **release**
+APK on every push and publishes it to the `latest` release.
+
+The signing keystore is **not** stored in the repo. CI reads it from GitHub
+Actions secrets:
+
+| Secret | Contents |
+|--------|----------|
+| `KEYSTORE_BASE64` | base64 of the release keystore |
+| `KEYSTORE_PASSWORD` | keystore password |
+| `KEY_ALIAS` | key alias |
+| `KEY_PASSWORD` | key password |
+
+Locally the release build is unsigned unless a `release.keystore` is present in
+`app/` with the matching `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`
+environment variables.
+
+## Project layout
 
 ```
 app/src/main/java/com/ilhanyurek/privatednstiles/
 ├── data/        DnsConfig (model) + DnsRepository (DataStore)
-├── dns/         DnsManager — Settings.Global okuma/yazma
+├── dns/         DnsManager — reads/writes Settings.Global
 ├── tile/        DnsTileService (cycle) + DnsPickerTileService (picker)
-├── ui/          Compose ekranları + DnsViewModel
+├── ui/          Compose screens + DnsViewModel
 ├── MainActivity.kt
 └── PickerActivity.kt
 ```
 
-## Gereksinimler / Requirements
+## Requirements
 
-- Android 9 (API 28) ve üzeri — Private DNS bu sürümle geldi.
-- `WRITE_SECURE_SETTINGS` izni (ADB ile bir kez).
+- Android 9 (API 28) or newer — Private DNS was introduced in this release.
+- `WRITE_SECURE_SETTINGS` granted once via ADB.
