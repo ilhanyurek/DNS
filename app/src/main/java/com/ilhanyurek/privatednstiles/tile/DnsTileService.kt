@@ -65,13 +65,16 @@ class DnsTileService : TileService() {
             tile.state = Tile.STATE_UNAVAILABLE
             tile.label = getString(R.string.tile_cycle_label)
             tile.subtitle = getString(R.string.tile_needs_permission)
+            tile.icon = Icon.createWithResource(this, R.drawable.ic_dns)
         } else {
             tile.label = config?.name ?: getString(R.string.tile_cycle_label)
             tile.subtitle = config?.subtitle ?: getString(R.string.tile_tap_to_cycle)
             tile.state = if (config == null || config.mode == com.ilhanyurek.privatednstiles.data.DnsMode.OFF)
                 Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
+            // Show the active DNS's short label as the icon so it's recognisable.
+            tile.icon = if (config != null) TileIcons.forConfig(config)
+            else Icon.createWithResource(this, R.drawable.ic_dns)
         }
-        tile.icon = Icon.createWithResource(this, R.drawable.ic_dns)
         tile.updateTile()
     }
 

@@ -59,13 +59,16 @@ class DnsPickerTileService : TileService() {
         if (!granted) {
             tile.state = Tile.STATE_UNAVAILABLE
             tile.subtitle = getString(R.string.tile_needs_permission)
+            tile.icon = Icon.createWithResource(this, R.drawable.ic_dns_pick)
         } else {
             tile.state = if (config == null || config.mode == com.ilhanyurek.privatednstiles.data.DnsMode.OFF)
                 Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
             tile.subtitle = config?.subtitle ?: getString(R.string.tile_tap_to_pick)
+            // Show the active DNS's short label so the current choice is visible.
+            tile.icon = if (config != null) TileIcons.forConfig(config)
+            else Icon.createWithResource(this, R.drawable.ic_dns_pick)
         }
         tile.label = getString(R.string.tile_picker_label)
-        tile.icon = Icon.createWithResource(this, R.drawable.ic_dns_pick)
         tile.updateTile()
     }
 
