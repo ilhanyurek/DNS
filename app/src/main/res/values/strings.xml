@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Private DNS Tiles</string>
+    <string name="tile_cycle_label">DNS Cycle</string>
+    <string name="tile_picker_label">DNS Picker</string>
+    <string name="tile_needs_permission">Needs ADB permission</string>
+</resources>
