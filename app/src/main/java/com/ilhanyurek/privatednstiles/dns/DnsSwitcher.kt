@@ -280,12 +280,19 @@ object DnsSwitcher {
             if (!currentWorks) {
                 // A broken strict server also breaks the lookups the tests rely on,
                 // so test from plain DNS. If even that fails, the network is down.
+                val wasFallbackOff = repo.isFallbackOff()
                 if (original.mode != DnsMode.OFF) {
+                    // Flag it first: if the process dies mid-test, the next check
+                    // knows this Off wasn't the user's choice and retries.
+                    repo.setFallbackOff(true)
                     DnsManager.apply(app, off)
                     touched = true
                 }
                 if (!verify(app)) {
-                    if (touched) DnsManager.apply(app, restoreIfOffline ?: original)
+                    if (touched) {
+                        DnsManager.apply(app, restoreIfOffline ?: original)
+                        repo.setFallbackOff(wasFallbackOff)
+                    }
                     return@withContext FailoverResult.Unchanged
                 }
             }
