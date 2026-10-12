@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -60,24 +61,32 @@ object ReachabilityChecker {
 
     /** The cached result for [hostname] on the current network, if still fresh. */
     fun cached(context: Context, hostname: String): Reachability? {
-        val entry = cache[key(context, hostname)] ?: return null
+        val entry = cache[key(activeNetwork(context), hostname)] ?: return null
         return entry.result.takeIf { SystemClock.elapsedRealtime() - entry.at < CACHE_TTL_MS }
     }
 
     /** Probe [hostname] (or reuse a fresh cached result unless [force]). */
     suspend fun check(context: Context, hostname: String, force: Boolean = false): Reachability {
         if (!force) cached(context, hostname)?.let { return it }
+        // Take the key before probing: if the network changes meanwhile, the
+        // result still belongs to the network it was measured on.
         val network = activeNetwork(context)
+        val key = key(network, hostname)
         val result = probe(network, hostname.trim())
-        if (result != Reachability.UNKNOWN) {
-            cache[key(context, hostname)] = Entry(result, SystemClock.elapsedRealtime())
-        }
+        if (result != Reachability.UNKNOWN) store(key, result)
         return result
     }
 
     /** Record that [hostname] failed in practice (e.g. DNS stopped resolving after a switch). */
     fun markBlocked(context: Context, hostname: String) {
-        cache[key(context, hostname)] = Entry(Reachability.BLOCKED, SystemClock.elapsedRealtime())
+        store(key(activeNetwork(context), hostname), Reachability.BLOCKED)
+    }
+
+    private fun store(key: String, result: Reachability) {
+        val now = SystemClock.elapsedRealtime()
+        // Drop expired entries (e.g. for networks we've left) so the cache stays small.
+        cache.entries.removeIf { now - it.value.at >= CACHE_TTL_MS }
+        cache[key] = Entry(result, now)
     }
 
     /** Probe all [hostnames] in parallel. */
@@ -123,8 +132,9 @@ object ReachabilityChecker {
             // The time budget covers only the DoT connection, not the lookup above,
             // so a slow lookup can't make a working server look blocked.
             val deadline = SystemClock.elapsedRealtime() + TIMEOUT_MS
-            // Like Android itself, try every address (e.g. IPv4 when IPv6 is broken).
-            val ok = addresses.any { address ->
+            // Like Android itself, try every address. IPv4 goes first: a network
+            // with a broken IPv6 route could otherwise use up the whole budget.
+            val ok = addresses.sortedBy { it !is Inet4Address }.any { address ->
                 SystemClock.elapsedRealtime() < deadline && handshake(network, address, hostname, deadline)
             }
             if (ok) Reachability.REACHABLE else Reachability.BLOCKED
@@ -159,8 +169,6 @@ object ReachabilityChecker {
     private fun activeNetwork(context: Context): Network? =
         context.getSystemService(ConnectivityManager::class.java)?.activeNetwork
 
-    private fun key(context: Context, hostname: String): String {
-        val net = activeNetwork(context)?.networkHandle ?: 0L
-        return "$net|${hostname.trim().lowercase()}"
-    }
+    private fun key(network: Network?, hostname: String): String =
+        "${network?.networkHandle ?: 0L}|${hostname.trim().lowercase()}"
 }
