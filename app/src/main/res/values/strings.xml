@@ -4,4 +4,5 @@
     <string name="tile_cycle_label">DNS Cycle</string>
     <string name="tile_picker_label">DNS Picker</string>
     <string name="tile_needs_permission">Needs ADB permission</string>
+    <string name="tile_checking">Checking…</string>
 </resources>

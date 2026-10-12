@@ -1,12 +1,20 @@
 package com.ilhanyurek.privatednstiles.tile
 
+import android.content.Context
 import android.graphics.drawable.Icon
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import android.widget.Toast
 import com.ilhanyurek.privatednstiles.R
 import com.ilhanyurek.privatednstiles.data.DnsConfig
+import com.ilhanyurek.privatednstiles.data.DnsMode
 import com.ilhanyurek.privatednstiles.data.DnsRepository
 import com.ilhanyurek.privatednstiles.dns.DnsManager
+import com.ilhanyurek.privatednstiles.dns.DnsSwitcher
+import com.ilhanyurek.privatednstiles.dns.Reachability
+import com.ilhanyurek.privatednstiles.dns.ReachabilityChecker
+import com.ilhanyurek.privatednstiles.dns.SwitchResult
+import com.ilhanyurek.privatednstiles.dns.message
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,12 +24,17 @@ import kotlinx.coroutines.withContext
 
 /**
  * Quick Settings tile that cycles through every saved DNS entry on each tap and
- * applies it immediately. The tile label shows the active entry.
+ * applies it immediately. Entries whose DoT server is blocked on the current
+ * network are skipped. The tile label shows the active entry.
  */
 class DnsTileService : TileService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val repo by lazy { DnsRepository(applicationContext) }
+    private var cycling = false
+
+    /** What happened on a tap: the switch outcome (null = nothing reachable) and skipped entries. */
+    private class CycleOutcome(val result: SwitchResult?, val skipped: List<DnsConfig>)
 
     override fun onStartListening() {
         super.onStartListening()
@@ -30,24 +43,51 @@ class DnsTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        scope.launch {
-            val configs = repo.getConfigs().ifEmpty { DnsConfig.defaults() }
-            if (configs.isEmpty()) return@launch
-
-            // Cycle position is based on the live system state; fall back to the
-            // last stored id, otherwise start at the beginning of the list.
-            val active = DnsManager.matchActive(applicationContext, configs)
-            val currentIndex = when {
-                active != null -> configs.indexOf(active)
-                else -> configs.indexOfFirst { it.id == repo.getActiveId() }
-            }
-            val next = configs[(currentIndex + 1).mod(configs.size)]
-
-            val ok = DnsManager.apply(applicationContext, next)
-            if (ok) repo.setActiveId(next.id)
-            // Re-read the real system state so the tile reflects what actually applied.
-            withContext(Dispatchers.Main) { refresh() }
+        if (cycling) return
+        cycling = true
+        qsTile?.let { it.subtitle = getString(R.string.tile_checking); it.updateTile() }
+        val app = applicationContext
+        // Runs in the app-wide scope so it finishes even if the panel is closed.
+        DnsSwitcher.runDetached({ cycle(app) }) { outcome ->
+            cycling = false
+            cycleMessage(outcome)?.let { Toast.makeText(app, it, Toast.LENGTH_LONG).show() }
+            refresh()
         }
+    }
+
+    private suspend fun cycle(app: Context): CycleOutcome {
+        val configs = repo.getConfigs().ifEmpty { DnsConfig.defaults() }
+
+        // Cycle position is based on the live system state; fall back to the
+        // last stored id, otherwise start at the beginning of the list.
+        val active = DnsManager.matchActive(app, configs)
+        val currentIndex = active?.let { configs.indexOf(it) }
+            ?: configs.indexOfFirst { it.id == repo.getActiveId() }
+        // Every other entry, in cycle order (the whole list if nothing matches).
+        val candidates = if (currentIndex < 0) configs
+        else (1 until configs.size).map { configs[(currentIndex + it).mod(configs.size)] }
+
+        // Test every DoT candidate in parallel (cached results are reused), then
+        // take the first one in cycle order that isn't blocked here.
+        val reach = ReachabilityChecker.checkAll(
+            app, candidates.filter { it.mode == DnsMode.HOSTNAME }.map { it.hostname }
+        )
+        fun blocked(c: DnsConfig) =
+            c.mode == DnsMode.HOSTNAME && reach[c.hostname.trim()] == Reachability.BLOCKED
+        val next = candidates.firstOrNull { !blocked(it) } ?: return CycleOutcome(null, candidates)
+        val skipped = candidates.takeWhile { it != next }
+        return CycleOutcome(DnsSwitcher.switch(app, next), skipped)
+    }
+
+    private fun cycleMessage(outcome: CycleOutcome): String? {
+        val result = outcome.result ?: return if (outcome.skipped.isEmpty())
+            "No other DNS entry to switch to" else "No other DNS is reachable on this network"
+        if (result is SwitchResult.Applied) {
+            if (outcome.skipped.isEmpty()) return null // the tile itself shows the change
+            val names = outcome.skipped.joinToString { it.name }
+            return "${result.message} (skipped $names: blocked on this network)"
+        }
+        return result.message
     }
 
     private fun refresh() {

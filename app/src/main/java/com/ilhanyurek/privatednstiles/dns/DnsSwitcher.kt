@@ -75,11 +75,18 @@ object DnsSwitcher {
     /** Run [switch] in an app-wide scope and deliver the result on the main thread. */
     fun launch(context: Context, config: DnsConfig, onResult: (SwitchResult) -> Unit = {}): Job {
         val app = context.applicationContext
-        return scope.launch {
-            val result = switch(app, config)
+        return runDetached({ switch(app, config) }, onResult)
+    }
+
+    /**
+     * Run [block] in the app-wide scope (so it isn't cancelled with a tile or a
+     * short-lived activity) and deliver its result on the main thread.
+     */
+    fun <T> runDetached(block: suspend () -> T, onResult: (T) -> Unit): Job =
+        scope.launch {
+            val result = block()
             withContext(Dispatchers.Main) { onResult(result) }
         }
-    }
 
     /** Check, apply and verify [config]. Switches are serialised. */
     suspend fun switch(context: Context, config: DnsConfig): SwitchResult = mutex.withLock {
