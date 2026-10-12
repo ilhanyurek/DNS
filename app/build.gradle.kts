@@ -13,8 +13,8 @@ android {
         applicationId = "com.ilhanyurek.privatednstiles"
         minSdk = 28
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 8
+        versionName = "1.7"
     }
 
     // The keystore is provided by CI from GitHub Secrets (never committed).
