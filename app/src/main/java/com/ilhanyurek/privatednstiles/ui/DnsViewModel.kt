@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -88,6 +90,7 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
         refreshPermission()
         // Repair a setting that doesn't work on this network (if fallback is on).
         DnsSwitcher.runDetached({ DnsSwitcher.autoFailoverOnOpen(getApplication()) }) { result ->
+            syncReachabilityWithCache()
             result.message?.let { _message.value = it }
         }
     }
@@ -118,9 +121,24 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
      * network) are reused, so reopening the screen doesn't re-probe right away.
      */
     suspend fun watchReachability() {
-        combine(ReachabilityChecker.networkChanges(getApplication()), repo.configs) { _, configs ->
-            configs.filter { it.mode == DnsMode.HOSTNAME }.map { reachabilityKey(it.hostname) }.toSet()
-        }.collectLatest { hosts -> refreshReachability(hosts) }
+        // The store emits on any change (e.g. the stored active id), so only react
+        // when the set of hostnames itself changes.
+        val hostnames = repo.configs
+            .map { configs -> configs.filter { it.mode == DnsMode.HOSTNAME }.map { reachabilityKey(it.hostname) }.toSet() }
+            .distinctUntilChanged()
+        combine(ReachabilityChecker.networkChanges(getApplication()), hostnames) { _, hosts -> hosts }
+            .collectLatest { hosts -> refreshReachability(hosts) }
+    }
+
+    /**
+     * Pull in what the checker learned meanwhile (e.g. servers a fallback found
+     * blocked), so the dots don't lag behind automatic changes.
+     */
+    private fun syncReachabilityWithCache() {
+        val app = getApplication<Application>()
+        _reachability.update { current ->
+            current.mapValues { (host, known) -> ReachabilityChecker.cached(app, host) ?: known }
+        }
     }
 
     private suspend fun refreshReachability(hosts: Set<String>) = coroutineScope {
@@ -141,11 +159,7 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
         DnsSwitcher.launch(getApplication(), config) { result ->
             _switchingId.value = null
             if (result == SwitchResult.NoPermission) _permission.value = false
-            if (config.mode == DnsMode.HOSTNAME) {
-                ReachabilityChecker.cached(getApplication(), config.hostname)?.let { r ->
-                    _reachability.update { it + (reachabilityKey(config.hostname) to r) }
-                }
-            }
+            syncReachabilityWithCache()
             _message.value = result.message
         }
     }
@@ -158,6 +172,7 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
             requestNotificationPermissionOnce()
             // Apply the priority order right away rather than at the next network change.
             DnsSwitcher.runDetached({ DnsSwitcher.autoFailover(getApplication()) }) { result ->
+                syncReachabilityWithCache()
                 result.message?.let { _message.value = it }
             }
         }
