@@ -16,7 +16,13 @@ Quick Settings panel — no digging through Settings each time.
 - **Phone + tablet**: responsive Jetpack Compose UI, Material 3, dynamic
   color (Android 12+), light/dark theme.
 - Add / edit / delete / reorder DNS entries in the app.
-- Your data stays on device (DataStore). No internet permission.
+- Reachability check: before switching, the app checks that the server's DoT
+  port (853) actually answers on the current network, so you don't end up
+  offline. Each entry shows a green / red / grey status dot.
+- Automatic rollback: if DNS stops resolving after a switch, the app returns to
+  the previous setting (or Automatic) within a few seconds.
+- Your data stays on device (DataStore). Network access is used only for the
+  reachability checks above.
 
 ## How it works
 
