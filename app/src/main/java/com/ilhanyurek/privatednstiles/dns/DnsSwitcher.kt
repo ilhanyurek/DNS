@@ -36,7 +36,11 @@ sealed interface SwitchResult {
     /** The server looked blocked on this network, so nothing was changed. */
     data class Blocked(val config: DnsConfig) : SwitchResult
 
-    /** The entry was applied but DNS stopped resolving, so another server was used. */
+    /**
+     * The entry was applied but DNS stopped resolving, so [restoredName] is used
+     * instead: the first working server, or (with automatic fallback off) the
+     * previous setting or Off.
+     */
     data class RolledBack(val config: DnsConfig, val restoredName: String) : SwitchResult
 
     /** The entry didn't answer and no other saved server did either: Private DNS is off. */
@@ -91,7 +95,8 @@ val FailoverResult.message: String?
  * Switches Private DNS safely: checks that a DoT server is reachable before
  * applying it, then confirms that DNS still resolves. When a server doesn't
  * work, the saved servers are tried in list order (the list is the priority
- * order) and, if none works, Private DNS is turned off.
+ * order) and, if none works, Private DNS is turned off. With automatic
+ * fallback off, a failed switch only returns to the previous setting.
  *
  * Android's strict Private DNS mode never falls back to plain DNS, so a server
  * whose port 853 is filtered would otherwise leave the device offline.
