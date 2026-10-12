@@ -176,8 +176,25 @@ object DnsSwitcher {
                 return@withContext SwitchResult.Applied(config)
             }
 
-            // 3. Fall back along the priority list, or to Off if nothing answers.
             ReachabilityChecker.markBlocked(app, config.hostname)
+
+            // 3a. Automatic fallback is off: only undo this switch, never pick
+            //     another server on the user's behalf. Off if even that fails.
+            if (!repo.isAutoFailoverEnabled()) {
+                DnsManager.apply(app, previous)
+                if (previous.mode != DnsMode.HOSTNAME || verify(app)) {
+                    val savedIds = repo.getConfigs().map { it.id }
+                    repo.setActiveId(previous.id.takeIf { it in savedIds })
+                    return@withContext SwitchResult.RolledBack(config, previous.name)
+                }
+                ReachabilityChecker.markBlocked(app, previous.hostname)
+                DnsManager.apply(app, off)
+                repo.setFallbackOff(true)
+                // Only the previous setting was tried, so don't claim none works.
+                return@withContext SwitchResult.RolledBack(config, off.name)
+            }
+
+            // 3b. Fall back along the priority list, or to Off if nothing answers.
             when (val result = failoverLocked(app, restoreIfOffline = previous, upgrade = true)) {
                 is FailoverResult.Switched -> SwitchResult.RolledBack(config, result.config.name)
                 FailoverResult.TurnedOff -> SwitchResult.TurnedOff(config)

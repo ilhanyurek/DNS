@@ -70,6 +70,7 @@
         <!-- Transparent host for the picker tile's dialog -->
         <activity
             android:name=".PickerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleInstance"
