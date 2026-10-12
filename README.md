@@ -19,8 +19,12 @@ Quick Settings panel — no digging through Settings each time.
 - Reachability check: before switching, the app checks that the server's DoT
   port (853) actually answers on the current network, so you don't end up
   offline. Each entry shows a green / red / grey status dot.
-- Automatic rollback: if DNS stops resolving after a switch, the app returns to
-  the previous setting (or Automatic) within a few seconds.
+- Automatic fallback: the list order is a priority order. When the network
+  changes, the first DoT server in the list that works there is used; if none
+  does, Private DNS is turned off so you stay online, and the app switches back
+  once a server works again. Can be turned off in the app.
+- Safe switching: if DNS stops resolving after a switch, the app moves to the
+  first working server in the list (or Off) within a few seconds.
 - Your data stays on device (DataStore). Network access is used only for the
   reachability checks above.
 
@@ -69,7 +73,12 @@ Open the Quick Settings panel → edit (pencil) → drag **DNS Cycle** and/or
 - Open the app to see the DNS list. Tap **Add DNS** to add a new hostname
   (e.g. `dns.google`, `1dot1dot1dot1.cloudflare-dns.com`, `xxxxxx.dns.nextdns.io`).
 - Tap a card in the list → that DNS is applied immediately.
-- Use the up/down arrows to reorder — **DNS Cycle** follows this order.
+- Use the up/down arrows to reorder. **DNS Cycle** follows this order, and so
+  does **Automatic fallback** (top = highest priority).
+- **Automatic fallback** runs when a new network connects and when the app or
+  the Quick Settings panel opens. On open it only repairs a DNS that doesn't
+  work, so an entry you picked by hand isn't replaced while it works.
+  Automatic changes are announced with a notification.
 - From Quick Settings: tap **DNS Cycle** to advance to the next entry, or tap
   **DNS Picker** to choose one from a list. Long-press either tile to open the app.
 
@@ -107,7 +116,9 @@ environment variables.
 ```
 app/src/main/java/com/ilhanyurek/privatednstiles/
 ├── data/        DnsConfig (model) + DnsRepository (DataStore)
-├── dns/         DnsManager — reads/writes Settings.Global
+├── background/  network-change wake-up, fallback job, boot receiver, notices
+├── dns/         DnsManager (Settings.Global), DnsSwitcher (safe switching and
+│                fallback), ReachabilityChecker (port 853 + TLS probe)
 ├── tile/        DnsTileService (cycle) + DnsPickerTileService (picker)
 ├── ui/          Compose screens + DnsViewModel
 ├── MainActivity.kt
