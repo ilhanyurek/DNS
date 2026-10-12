@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 
 data class UiState(
     val configs: List<DnsConfig> = emptyList(),
+    /** Id of the saved entry matching the live system setting, if any. */
     val activeId: String? = null,
     val hasPermission: Boolean = false,
     /** Reachability per DoT hostname (see [reachabilityKey]). Missing = not tested yet. */
@@ -48,8 +49,11 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
 
     val uiState: StateFlow<UiState> =
         combine(
-            repo.configs, repo.activeId, _permission, _reachability, _switchingId
-        ) { configs, activeId, perm, reachability, switchingId ->
+            repo.configs, DnsManager.settingChanges(app), _permission, _reachability, _switchingId
+        ) { configs, setting, perm, reachability, switchingId ->
+            // The active entry always reflects the real system setting, even when
+            // it was changed elsewhere (system Settings, a tile, a fallback).
+            val activeId = DnsManager.findMatch(configs, setting.mode, setting.hostname)?.id
             UiState(configs, activeId, perm, reachability, switchingId)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState())
 

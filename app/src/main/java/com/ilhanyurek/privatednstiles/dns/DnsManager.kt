@@ -3,10 +3,20 @@ package com.ilhanyurek.privatednstiles.dns
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.ilhanyurek.privatednstiles.data.DnsConfig
 import com.ilhanyurek.privatednstiles.data.DnsMode
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+
+/** The live Private DNS setting: its mode and, for strict mode, the hostname. */
+data class DnsSetting(val mode: DnsMode, val hostname: String)
 
 /**
  * Reads and writes the global Private DNS state via Settings.Global.
@@ -33,6 +43,27 @@ object DnsManager {
     /** The currently-applied strict-mode hostname, or empty string. */
     fun currentHostname(context: Context): String =
         Settings.Global.getString(context.contentResolver, SPECIFIER).orEmpty()
+
+    /** The current setting as a single value. */
+    fun currentSetting(context: Context): DnsSetting =
+        DnsSetting(currentMode(context), currentHostname(context))
+
+    /**
+     * Emits the current setting and again whenever it changes, whoever changes
+     * it (this app, the system Settings screen or another app).
+     */
+    fun settingChanges(context: Context): Flow<DnsSetting> = callbackFlow {
+        val resolver = context.contentResolver
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                trySend(currentSetting(context))
+            }
+        }
+        resolver.registerContentObserver(Settings.Global.getUriFor(MODE), false, observer)
+        resolver.registerContentObserver(Settings.Global.getUriFor(SPECIFIER), false, observer)
+        trySend(currentSetting(context))
+        awaitClose { resolver.unregisterContentObserver(observer) }
+    }.distinctUntilChanged()
 
     /**
      * Apply [config] to the system. Returns true on success, false if the write

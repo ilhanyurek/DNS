@@ -25,6 +25,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -54,7 +55,9 @@ class PickerActivity : ComponentActivity() {
         setContent {
             PrivateDnsTilesTheme {
                 val configs by repo.configs.collectAsState(initial = emptyList())
-                val activeId by repo.activeId.collectAsState(initial = null)
+                val settingFlow = remember { DnsManager.settingChanges(applicationContext) }
+                val setting by settingFlow.collectAsState(initial = DnsManager.currentSetting(applicationContext))
+                val activeId = DnsManager.findMatch(configs, setting.mode, setting.hostname)?.id
                 val granted by produceState(initialValue = true) {
                     value = DnsManager.hasPermission(applicationContext)
                 }
