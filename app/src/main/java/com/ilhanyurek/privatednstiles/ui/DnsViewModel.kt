@@ -1,6 +1,10 @@
 package com.ilhanyurek.privatednstiles.ui
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ilhanyurek.privatednstiles.background.NetworkWatcher
@@ -13,13 +17,16 @@ import com.ilhanyurek.privatednstiles.dns.Reachability
 import com.ilhanyurek.privatednstiles.dns.ReachabilityChecker
 import com.ilhanyurek.privatednstiles.dns.SwitchResult
 import com.ilhanyurek.privatednstiles.dns.message
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -50,6 +57,11 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    private val _notificationPermissionRequests = Channel<Unit>(Channel.CONFLATED)
+
+    /** Emits when the activity should ask for the notification permission. */
+    val notificationPermissionRequests: Flow<Unit> = _notificationPermissionRequests.receiveAsFlow()
+
     val uiState: StateFlow<UiState> =
         combine(
             repo.configs, DnsManager.settingChanges(app), _permission, _reachability, _switchingId
@@ -66,8 +78,29 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
             repo.seedDefaultsIfEmpty()
             // Make sure the network-change registration matches the setting.
             NetworkWatcher.sync(getApplication())
+            if (repo.isAutoFailoverEnabled()) requestNotificationPermissionOnce()
         }
         refreshPermission()
+    }
+
+    /** Call whenever the screen comes to the foreground. */
+    fun onOpened() {
+        refreshPermission()
+        // Repair a setting that doesn't work on this network (if fallback is on).
+        DnsSwitcher.runDetached({ DnsSwitcher.autoFailoverOnOpen(getApplication()) }) { result ->
+            result.message?.let { _message.value = it }
+        }
+    }
+
+    /** Ask once (Android 13+) so automatic changes can be shown as notifications. */
+    private suspend fun requestNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            getApplication(), Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted || repo.wasNotificationPermissionRequested()) return
+        repo.setNotificationPermissionRequested()
+        _notificationPermissionRequests.trySend(Unit)
     }
 
     fun refreshPermission() {
@@ -121,6 +154,12 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.setAutoFailover(enabled)
             NetworkWatcher.sync(getApplication())
+            if (!enabled) return@launch
+            requestNotificationPermissionOnce()
+            // Apply the priority order right away rather than at the next network change.
+            DnsSwitcher.runDetached({ DnsSwitcher.autoFailover(getApplication()) }) { result ->
+                result.message?.let { _message.value = it }
+            }
         }
     }
 

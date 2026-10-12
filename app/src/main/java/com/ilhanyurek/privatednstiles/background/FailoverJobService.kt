@@ -9,6 +9,7 @@ import android.content.Context
 import com.ilhanyurek.privatednstiles.data.DnsRepository
 import com.ilhanyurek.privatednstiles.dns.DnsSwitcher
 import com.ilhanyurek.privatednstiles.dns.FailoverResult
+import com.ilhanyurek.privatednstiles.dns.message
 
 /**
  * Runs the automatic fallback after the default network has changed. Scheduled
@@ -18,7 +19,8 @@ class FailoverJobService : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         val app = applicationContext
-        DnsSwitcher.runDetached({ runIfNetworkChanged(app) }) {
+        DnsSwitcher.runDetached({ runIfNetworkChanged(app) }) { result ->
+            result?.message?.let { Notifier.show(app, it) }
             jobFinished(params, false)
         }
         return true

@@ -6,6 +6,7 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
 import com.ilhanyurek.privatednstiles.R
+import com.ilhanyurek.privatednstiles.background.Notifier
 import com.ilhanyurek.privatednstiles.data.DnsConfig
 import com.ilhanyurek.privatednstiles.data.DnsMode
 import com.ilhanyurek.privatednstiles.data.DnsRepository
@@ -39,6 +40,18 @@ class DnsTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
         refresh()
+        repairOnOpen()
+    }
+
+    /** If automatic fallback is on and the current setting doesn't work, fix it. */
+    private fun repairOnOpen() {
+        val app = applicationContext
+        DnsSwitcher.runDetached({ DnsSwitcher.autoFailoverOnOpen(app) }) { result ->
+            result.message?.let {
+                Notifier.show(app, it)
+                refresh()
+            }
+        }
     }
 
     override fun onClick() {

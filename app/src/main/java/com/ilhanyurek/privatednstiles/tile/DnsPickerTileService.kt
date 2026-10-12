@@ -8,9 +8,12 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import com.ilhanyurek.privatednstiles.PickerActivity
 import com.ilhanyurek.privatednstiles.R
+import com.ilhanyurek.privatednstiles.background.Notifier
 import com.ilhanyurek.privatednstiles.data.DnsConfig
 import com.ilhanyurek.privatednstiles.data.DnsRepository
 import com.ilhanyurek.privatednstiles.dns.DnsManager
+import com.ilhanyurek.privatednstiles.dns.DnsSwitcher
+import com.ilhanyurek.privatednstiles.dns.message
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,6 +32,11 @@ class DnsPickerTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
+        refresh()
+        repairOnOpen()
+    }
+
+    private fun refresh() {
         scope.launch {
             val granted = DnsManager.hasPermission(applicationContext)
             if (!granted) {
@@ -40,6 +48,17 @@ class DnsPickerTileService : TileService() {
             val host = DnsManager.currentHostname(applicationContext)
             val display = TileIcons.describe(mode, host, DnsManager.findMatch(configs, mode, host))
             withContext(Dispatchers.Main) { renderTile(display) }
+        }
+    }
+
+    /** If automatic fallback is on and the current setting doesn't work, fix it. */
+    private fun repairOnOpen() {
+        val app = applicationContext
+        DnsSwitcher.runDetached({ DnsSwitcher.autoFailoverOnOpen(app) }) { result ->
+            result.message?.let {
+                Notifier.show(app, it)
+                refresh()
+            }
         }
     }
 

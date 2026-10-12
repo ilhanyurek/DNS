@@ -1,9 +1,12 @@
 package com.ilhanyurek.privatednstiles
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -18,6 +21,10 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val viewModel: DnsViewModel by viewModels()
+
+    // The result needs no handling: without the permission, notices fall back to toasts.
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,11 +49,19 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.watchReachability() }
         }
+        lifecycleScope.launch {
+            viewModel.notificationPermissionRequests.collect {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        // Permission may have been granted via ADB while we were backgrounded.
-        viewModel.refreshPermission()
+        // Permission may have been granted via ADB while we were backgrounded, and
+        // the network may have changed: re-check both.
+        viewModel.onOpened()
     }
 }
