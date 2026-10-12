@@ -48,7 +48,9 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease
+          # Full lint (not just the release-vital checks) so API-level and
+          # similar errors fail the build before anything is published.
+          ./gradlew assembleRelease lintRelease
           cp app/build/outputs/apk/release/app-release.apk PrivateDnsTiles.apk
 
       # Replace the rolling "latest" release so both the tag and the APK
