@@ -47,6 +47,7 @@ object ReachabilityChecker {
 
     private const val DOT_PORT = 853
     private const val TIMEOUT_MS = 2_000L
+    private const val LOOKUP_TIMEOUT_MS = 3_000L
     private const val CACHE_TTL_MS = 60_000L
 
     private data class Entry(val result: Reachability, val at: Long)
@@ -110,38 +111,47 @@ object ReachabilityChecker {
     }.conflate()
 
     private suspend fun probe(network: Network?, hostname: String): Reachability {
-        val deadline = SystemClock.elapsedRealtime() + TIMEOUT_MS
-
         // Resolve with the current DNS. If that fails we can't judge the server.
         val lookup = lookupScope.async {
             runCatching { network?.getAllByName(hostname) ?: InetAddress.getAllByName(hostname) }
-                .getOrNull()?.firstOrNull()
+                .getOrNull()?.toList().orEmpty()
         }
-        val address = withTimeoutOrNull(TIMEOUT_MS) { lookup.await() }
-            ?: return Reachability.UNKNOWN
+        val addresses = withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { lookup.await() }.orEmpty()
+        if (addresses.isEmpty()) return Reachability.UNKNOWN
 
         return withContext(Dispatchers.IO) {
-            try {
-                val plain = network?.socketFactory?.createSocket() ?: Socket()
-                plain.use { socket ->
-                    socket.connect(InetSocketAddress(address, DOT_PORT), remaining(deadline))
-                    socket.soTimeout = remaining(deadline)
-                    // A bare TCP connect isn't enough: some networks accept the
-                    // connection and then drop it based on the TLS SNI.
-                    val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-                    (factory.createSocket(socket, hostname, DOT_PORT, true) as SSLSocket).use { tls ->
-                        tls.sslParameters = tls.sslParameters.apply {
-                            endpointIdentificationAlgorithm = "HTTPS"
-                        }
-                        tls.startHandshake()
-                    }
-                }
-                Reachability.REACHABLE
-            } catch (e: IOException) {
-                Reachability.BLOCKED
+            // The time budget covers only the DoT connection, not the lookup above,
+            // so a slow lookup can't make a working server look blocked.
+            val deadline = SystemClock.elapsedRealtime() + TIMEOUT_MS
+            // Like Android itself, try every address (e.g. IPv4 when IPv6 is broken).
+            val ok = addresses.any { address ->
+                SystemClock.elapsedRealtime() < deadline && handshake(network, address, hostname, deadline)
             }
+            if (ok) Reachability.REACHABLE else Reachability.BLOCKED
         }
     }
+
+    /** Connect to [address]:853 and complete a TLS handshake for [hostname] before [deadline]. */
+    private fun handshake(network: Network?, address: InetAddress, hostname: String, deadline: Long): Boolean =
+        try {
+            val plain = network?.socketFactory?.createSocket() ?: Socket()
+            plain.use { socket ->
+                socket.connect(InetSocketAddress(address, DOT_PORT), remaining(deadline))
+                socket.soTimeout = remaining(deadline)
+                // A bare TCP connect isn't enough: some networks accept the
+                // connection and then drop it based on the TLS SNI.
+                val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+                (factory.createSocket(socket, hostname, DOT_PORT, true) as SSLSocket).use { tls ->
+                    tls.sslParameters = tls.sslParameters.apply {
+                        endpointIdentificationAlgorithm = "HTTPS"
+                    }
+                    tls.startHandshake()
+                }
+            }
+            true
+        } catch (e: IOException) {
+            false
+        }
 
     private fun remaining(deadline: Long): Int =
         (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L).toInt()
