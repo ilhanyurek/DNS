@@ -83,7 +83,7 @@ class DnsPickerTileService : TileService() {
         val tile = qsTile ?: return
         tile.state = Tile.STATE_UNAVAILABLE
         tile.label = getString(R.string.tile_picker_label)
-        tile.subtitle = getString(R.string.tile_needs_permission)
+        tile.setSubtitleIfSupported(getString(R.string.tile_needs_permission))
         tile.icon = Icon.createWithResource(this, R.drawable.ic_dns_pick)
         tile.updateTile()
     }
@@ -91,7 +91,7 @@ class DnsPickerTileService : TileService() {
     private fun renderTile(display: TileIcons.Display) {
         val tile = qsTile ?: return
         tile.label = getString(R.string.tile_picker_label)
-        tile.subtitle = display.subtitle
+        tile.setSubtitleIfSupported(display.subtitle)
         tile.state = if (display.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         // Show the active DNS's short label so the current choice is visible.
         tile.icon = TileIcons.forLabel(display.label)

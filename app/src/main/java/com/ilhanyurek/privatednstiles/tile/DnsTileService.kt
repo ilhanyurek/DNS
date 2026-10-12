@@ -58,7 +58,7 @@ class DnsTileService : TileService() {
         super.onClick()
         if (cycling) return
         cycling = true
-        qsTile?.let { it.subtitle = getString(R.string.tile_checking); it.updateTile() }
+        qsTile?.let { it.setSubtitleIfSupported(getString(R.string.tile_checking)); it.updateTile() }
         val app = applicationContext
         // Runs in the app-wide scope so it finishes even if the panel is closed.
         DnsSwitcher.runDetached({ cycle(app) }) { outcome ->
@@ -125,7 +125,7 @@ class DnsTileService : TileService() {
         val tile = qsTile ?: return
         tile.state = Tile.STATE_UNAVAILABLE
         tile.label = getString(R.string.tile_cycle_label)
-        tile.subtitle = getString(R.string.tile_needs_permission)
+        tile.setSubtitleIfSupported(getString(R.string.tile_needs_permission))
         tile.icon = Icon.createWithResource(this, R.drawable.ic_dns)
         tile.updateTile()
     }
@@ -133,7 +133,7 @@ class DnsTileService : TileService() {
     private fun renderTile(display: TileIcons.Display) {
         val tile = qsTile ?: return
         tile.label = display.name
-        tile.subtitle = display.subtitle
+        tile.setSubtitleIfSupported(display.subtitle)
         tile.state = if (display.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.icon = TileIcons.forLabel(display.label)
         tile.updateTile()
