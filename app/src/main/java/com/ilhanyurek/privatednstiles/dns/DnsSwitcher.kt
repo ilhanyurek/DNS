@@ -7,10 +7,12 @@ import android.net.Network
 import android.os.Build
 import android.os.CancellationSignal
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.ilhanyurek.privatednstiles.data.DnsConfig
 import com.ilhanyurek.privatednstiles.data.DnsMode
 import com.ilhanyurek.privatednstiles.data.DnsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +44,9 @@ sealed interface SwitchResult {
 
     /** WRITE_SECURE_SETTINGS hasn't been granted. */
     data object NoPermission : SwitchResult
+
+    /** Something unexpected went wrong (e.g. storage); see the log. */
+    data class Failed(val config: DnsConfig) : SwitchResult
 }
 
 /** Short user-facing description of a [SwitchResult]. */
@@ -56,6 +61,7 @@ val SwitchResult.message: String
             "${config.name} didn't answer and none of your DNS servers is reachable here, " +
                 "so Private DNS is off"
         SwitchResult.NoPermission -> "Couldn't change DNS – grant permission via ADB"
+        is SwitchResult.Failed -> "Couldn't finish switching to ${config.name}, please try again"
     }
 
 /** Outcome of [DnsSwitcher.failover]. */
@@ -92,6 +98,8 @@ val FailoverResult.message: String?
  */
 object DnsSwitcher {
 
+    private const val TAG = "DnsSwitcher"
+
     private const val VERIFY_TIMEOUT_MS = 5_000L
     private const val SETTLE_DELAY_MS = 300L
     private const val RETRY_DELAY_MS = 250L
@@ -111,18 +119,36 @@ object DnsSwitcher {
     /** Run [switch] in an app-wide scope and deliver the result on the main thread. */
     fun launch(context: Context, config: DnsConfig, onResult: (SwitchResult) -> Unit = {}): Job {
         val app = context.applicationContext
-        return runDetached({ switch(app, config) }, onResult)
+        return runDetached(
+            { switch(app, config) },
+            onFailure = { onResult(SwitchResult.Failed(config)) },
+            onResult = onResult
+        )
     }
 
     /**
      * Run [block] in the app-wide scope (so it isn't cancelled with a tile or a
-     * short-lived activity) and deliver its result on the main thread.
+     * short-lived activity) and deliver its result on the main thread. If it
+     * throws, the error is logged and [onFailure] is called instead, so callers
+     * can always release what they hold (a job, a receiver, a busy flag).
      */
-    fun <T> runDetached(block: suspend () -> T, onResult: (T) -> Unit): Job =
-        scope.launch {
-            val result = block()
-            withContext(Dispatchers.Main) { onResult(result) }
+    fun <T> runDetached(
+        block: suspend () -> T,
+        onFailure: () -> Unit = {},
+        onResult: (T) -> Unit
+    ): Job = scope.launch {
+        val result = try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Background DNS task failed", e)
+            Result.failure(e)
         }
+        withContext(Dispatchers.Main) {
+            result.fold(onSuccess = onResult, onFailure = { onFailure() })
+        }
+    }
 
     /** Check, apply and verify [config]. Switches are serialised. */
     suspend fun switch(context: Context, config: DnsConfig): SwitchResult = mutex.withLock {

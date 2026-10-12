@@ -19,7 +19,10 @@ class FailoverJobService : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         val app = applicationContext
-        DnsSwitcher.runDetached({ runIfNetworkChanged(app) }) { result ->
+        DnsSwitcher.runDetached(
+            { runIfNetworkChanged(app) },
+            onFailure = { jobFinished(params, false) }
+        ) { result ->
             result?.message?.let { Notifier.show(app, it) }
             jobFinished(params, false)
         }

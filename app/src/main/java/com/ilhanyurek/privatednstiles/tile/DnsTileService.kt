@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Quick Settings tile that cycles through every saved DNS entry on each tap and
@@ -32,7 +33,6 @@ class DnsTileService : TileService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val repo by lazy { DnsRepository(applicationContext) }
-    private var cycling = false
 
     /** What happened on a tap: the switch outcome (null = nothing reachable) and skipped entries. */
     private class CycleOutcome(val result: SwitchResult?, val skipped: List<DnsConfig>)
@@ -56,13 +56,16 @@ class DnsTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        if (cycling) return
-        cycling = true
+        // Process-wide: the service can be recreated between taps while a switch runs.
+        if (!cycling.compareAndSet(false, true)) return
         qsTile?.let { it.setSubtitleIfSupported(getString(R.string.tile_checking)); it.updateTile() }
         val app = applicationContext
         // Runs in the app-wide scope so it finishes even if the panel is closed.
-        DnsSwitcher.runDetached({ cycle(app) }) { outcome ->
-            cycling = false
+        DnsSwitcher.runDetached({ cycle(app) }, onFailure = {
+            cycling.set(false)
+            refresh()
+        }) { outcome ->
+            cycling.set(false)
             cycleMessage(outcome)?.let { Toast.makeText(app, it, Toast.LENGTH_LONG).show() }
             refresh()
         }
@@ -142,5 +145,9 @@ class DnsTileService : TileService() {
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
+    }
+
+    private companion object {
+        val cycling = AtomicBoolean(false)
     }
 }

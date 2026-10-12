@@ -13,6 +13,9 @@ class BootReceiver : BroadcastReceiver() {
         ) return
         val app = context.applicationContext
         val pending = goAsync()
-        DnsSwitcher.runDetached({ NetworkWatcher.sync(app) }) { pending.finish() }
+        DnsSwitcher.runDetached(
+            { NetworkWatcher.sync(app) },
+            onFailure = { pending.finish() }
+        ) { pending.finish() }
     }
 }
