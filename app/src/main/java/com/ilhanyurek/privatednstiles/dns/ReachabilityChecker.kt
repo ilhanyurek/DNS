@@ -74,6 +74,11 @@ object ReachabilityChecker {
         return result
     }
 
+    /** Record that [hostname] failed in practice (e.g. DNS stopped resolving after a switch). */
+    fun markBlocked(context: Context, hostname: String) {
+        cache[key(context, hostname)] = Entry(Reachability.BLOCKED, SystemClock.elapsedRealtime())
+    }
+
     /** Probe all [hostnames] in parallel. */
     suspend fun checkAll(
         context: Context,
