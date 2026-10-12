@@ -29,6 +29,8 @@ class DnsRepository(private val context: Context) {
     private val keyActiveId = stringPreferencesKey("active_id")
     private val keyAutoFailover = booleanPreferencesKey("auto_failover")
     private val keyLastNetwork = longPreferencesKey("last_network")
+    private val keyFallbackOff = booleanPreferencesKey("fallback_off")
+    private val keyNotificationPrompted = booleanPreferencesKey("notification_prompted")
 
     val configs: Flow<List<DnsConfig>> = context.dataStore.data.map { prefs ->
         decode(prefs[keyConfigs])
@@ -54,6 +56,26 @@ class DnsRepository(private val context: Context) {
 
     suspend fun setAutoFailover(enabled: Boolean) {
         context.dataStore.edit { prefs -> prefs[keyAutoFailover] = enabled }
+    }
+
+    /**
+     * True while Private DNS is off because the fallback found no working server
+     * (as opposed to the user choosing Off), so it should be retried later.
+     */
+    suspend fun isFallbackOff(): Boolean = context.dataStore.data.first()[keyFallbackOff] ?: false
+
+    suspend fun setFallbackOff(on: Boolean) {
+        context.dataStore.edit { prefs ->
+            if (on) prefs[keyFallbackOff] = true else prefs.remove(keyFallbackOff)
+        }
+    }
+
+    /** Whether the notification permission has already been requested once. */
+    suspend fun wasNotificationPermissionRequested(): Boolean =
+        context.dataStore.data.first()[keyNotificationPrompted] ?: false
+
+    suspend fun setNotificationPermissionRequested() {
+        context.dataStore.edit { prefs -> prefs[keyNotificationPrompted] = true }
     }
 
     /** Handle of the last network the automatic fallback has handled (0 = none). */
