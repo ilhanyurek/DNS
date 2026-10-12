@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
                     onSave = viewModel::save,
                     onDelete = viewModel::delete,
                     onMove = viewModel::move,
+                    onAutoFailoverChange = viewModel::setAutoFailover,
                     onConsumeMessage = viewModel::consumeMessage
                 )
             }

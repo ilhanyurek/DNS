@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -61,6 +62,7 @@ fun DnsScreen(
     onSave: (DnsConfig) -> Unit,
     onDelete: (DnsConfig) -> Unit,
     onMove: (Int, Int) -> Unit,
+    onAutoFailoverChange: (Boolean) -> Unit,
     onConsumeMessage: () -> Unit
 ) {
     var editing by remember { mutableStateOf<DnsConfig?>(null) }
@@ -94,6 +96,7 @@ fun DnsScreen(
                 if (!state.hasPermission) {
                     item { PermissionCard() }
                 }
+                item { FallbackCard(enabled = state.autoFailover, onChange = onAutoFailoverChange) }
                 itemsIndexed(state.configs, key = { _, c -> c.id }) { index, config ->
                     DnsCard(
                         config = config,
@@ -193,6 +196,37 @@ private fun DnsCard(
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete")
             }
+        }
+    }
+}
+
+/** Toggle for switching to the first working server automatically. */
+@Composable
+private fun FallbackCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Card {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Automatic fallback",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "When the network changes, use the first DNS in this list that works " +
+                        "there; the list order is the priority. If none works, Private DNS " +
+                        "is turned off so you stay online.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onChange,
+                modifier = Modifier.padding(start = 12.dp)
+            )
         }
     }
 }

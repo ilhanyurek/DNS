@@ -31,7 +31,9 @@ data class UiState(
     /** Reachability per DoT hostname (see [reachabilityKey]). Missing = not tested yet. */
     val reachability: Map<String, Reachability> = emptyMap(),
     /** Id of the entry currently being checked / applied, if any. */
-    val switchingId: String? = null
+    val switchingId: String? = null,
+    /** Switch to the first working server automatically when the network changes. */
+    val autoFailover: Boolean = true
 )
 
 /** Key used for [UiState.reachability]. */
@@ -55,7 +57,8 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
             // it was changed elsewhere (system Settings, a tile, a fallback).
             val activeId = DnsManager.findMatch(configs, setting.mode, setting.hostname)?.id
             UiState(configs, activeId, perm, reachability, switchingId)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState())
+        }.combine(repo.autoFailover) { state, auto -> state.copy(autoFailover = auto) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState())
 
     init {
         viewModelScope.launch { repo.seedDefaultsIfEmpty() }
@@ -107,6 +110,10 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
             }
             _message.value = result.message
         }
+    }
+
+    fun setAutoFailover(enabled: Boolean) {
+        viewModelScope.launch { repo.setAutoFailover(enabled) }
     }
 
     fun save(config: DnsConfig) {
