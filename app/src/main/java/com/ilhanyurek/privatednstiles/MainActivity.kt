@@ -7,9 +7,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.ilhanyurek.privatednstiles.ui.DnsScreen
 import com.ilhanyurek.privatednstiles.ui.DnsViewModel
 import com.ilhanyurek.privatednstiles.ui.theme.PrivateDnsTilesTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -32,6 +36,10 @@ class MainActivity : ComponentActivity() {
                     onConsumeMessage = viewModel::consumeMessage
                 )
             }
+        }
+        // Re-test the servers whenever the network changes, but only while visible.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.watchReachability() }
         }
     }
 

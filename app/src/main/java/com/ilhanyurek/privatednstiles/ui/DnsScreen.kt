@@ -1,5 +1,6 @@
 package com.ilhanyurek.privatednstiles.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -39,9 +42,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ilhanyurek.privatednstiles.data.DnsConfig
+import com.ilhanyurek.privatednstiles.data.DnsMode
+import com.ilhanyurek.privatednstiles.dns.Reachability
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +98,11 @@ fun DnsScreen(
                     DnsCard(
                         config = config,
                         isActive = config.id == state.activeId,
+                        reachability = if (config.mode == DnsMode.HOSTNAME)
+                            state.reachability[reachabilityKey(config.hostname)] ?: Reachability.UNKNOWN
+                        else null,
+                        switching = config.id == state.switchingId,
+                        enabled = state.switchingId == null,
                         canMoveUp = index > 0,
                         canMoveDown = index < state.configs.lastIndex,
                         onApply = { onApply(config) },
@@ -115,6 +129,9 @@ fun DnsScreen(
 private fun DnsCard(
     config: DnsConfig,
     isActive: Boolean,
+    reachability: Reachability?,
+    switching: Boolean,
+    enabled: Boolean,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onApply: () -> Unit,
@@ -125,6 +142,7 @@ private fun DnsCard(
 ) {
     Card(
         onClick = onApply,
+        enabled = enabled,
         colors = if (isActive)
             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         else CardDefaults.cardColors()
@@ -135,6 +153,13 @@ private fun DnsCard(
         ) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    when {
+                        switching -> CircularProgressIndicator(
+                            modifier = Modifier.padding(end = 8.dp).size(12.dp),
+                            strokeWidth = 2.dp
+                        )
+                        reachability != null -> StatusDot(reachability, Modifier.padding(end = 8.dp))
+                    }
                     if (isActive) {
                         Icon(
                             Icons.Default.CheckCircle,
@@ -170,6 +195,23 @@ private fun DnsCard(
             }
         }
     }
+}
+
+/** Green / red / grey dot: reachable, blocked, or not tested on this network. */
+@Composable
+private fun StatusDot(reachability: Reachability, modifier: Modifier = Modifier) {
+    val (color, label) = when (reachability) {
+        Reachability.REACHABLE -> Color(0xFF34A853) to "Reachable on this network"
+        Reachability.BLOCKED -> MaterialTheme.colorScheme.error to "Blocked on this network"
+        Reachability.UNKNOWN -> MaterialTheme.colorScheme.outline to "Not tested yet"
+    }
+    Box(
+        modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(color)
+            .semantics { contentDescription = label }
+    )
 }
 
 @Composable
