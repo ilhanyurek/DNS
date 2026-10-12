@@ -3,6 +3,7 @@ package com.ilhanyurek.privatednstiles.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +28,7 @@ class DnsRepository(private val context: Context) {
     private val keyConfigs = stringPreferencesKey("configs")
     private val keyActiveId = stringPreferencesKey("active_id")
     private val keyAutoFailover = booleanPreferencesKey("auto_failover")
+    private val keyLastNetwork = longPreferencesKey("last_network")
 
     val configs: Flow<List<DnsConfig>> = context.dataStore.data.map { prefs ->
         decode(prefs[keyConfigs])
@@ -52,6 +54,13 @@ class DnsRepository(private val context: Context) {
 
     suspend fun setAutoFailover(enabled: Boolean) {
         context.dataStore.edit { prefs -> prefs[keyAutoFailover] = enabled }
+    }
+
+    /** Handle of the last network the automatic fallback has handled (0 = none). */
+    suspend fun getLastNetwork(): Long = context.dataStore.data.first()[keyLastNetwork] ?: 0L
+
+    suspend fun setLastNetwork(handle: Long) {
+        context.dataStore.edit { prefs -> prefs[keyLastNetwork] = handle }
     }
 
     suspend fun upsert(config: DnsConfig) {

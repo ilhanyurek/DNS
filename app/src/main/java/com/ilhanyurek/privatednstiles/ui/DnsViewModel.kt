@@ -3,6 +3,7 @@ package com.ilhanyurek.privatednstiles.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ilhanyurek.privatednstiles.background.NetworkWatcher
 import com.ilhanyurek.privatednstiles.data.DnsConfig
 import com.ilhanyurek.privatednstiles.data.DnsMode
 import com.ilhanyurek.privatednstiles.data.DnsRepository
@@ -61,7 +62,11 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState())
 
     init {
-        viewModelScope.launch { repo.seedDefaultsIfEmpty() }
+        viewModelScope.launch {
+            repo.seedDefaultsIfEmpty()
+            // Make sure the network-change registration matches the setting.
+            NetworkWatcher.sync(getApplication())
+        }
         refreshPermission()
     }
 
@@ -113,7 +118,10 @@ class DnsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setAutoFailover(enabled: Boolean) {
-        viewModelScope.launch { repo.setAutoFailover(enabled) }
+        viewModelScope.launch {
+            repo.setAutoFailover(enabled)
+            NetworkWatcher.sync(getApplication())
+        }
     }
 
     fun save(config: DnsConfig) {
