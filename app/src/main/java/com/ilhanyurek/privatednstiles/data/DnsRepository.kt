@@ -1,6 +1,7 @@
 package com.ilhanyurek.privatednstiles.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -25,6 +26,7 @@ class DnsRepository(private val context: Context) {
 
     private val keyConfigs = stringPreferencesKey("configs")
     private val keyActiveId = stringPreferencesKey("active_id")
+    private val keyAutoFailover = booleanPreferencesKey("auto_failover")
 
     val configs: Flow<List<DnsConfig>> = context.dataStore.data.map { prefs ->
         decode(prefs[keyConfigs])
@@ -37,6 +39,20 @@ class DnsRepository(private val context: Context) {
     suspend fun getConfigs(): List<DnsConfig> = configs.first()
 
     suspend fun getActiveId(): String? = activeId.first()
+
+    /**
+     * Whether to switch automatically to the first working server (in list order)
+     * when the network changes. On by default.
+     */
+    val autoFailover: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[keyAutoFailover] ?: true
+    }
+
+    suspend fun isAutoFailoverEnabled(): Boolean = autoFailover.first()
+
+    suspend fun setAutoFailover(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[keyAutoFailover] = enabled }
+    }
 
     suspend fun upsert(config: DnsConfig) {
         context.dataStore.edit { prefs ->

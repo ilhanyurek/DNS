@@ -34,8 +34,11 @@ sealed interface SwitchResult {
     /** The server looked blocked on this network, so nothing was changed. */
     data class Blocked(val config: DnsConfig) : SwitchResult
 
-    /** The entry was applied but DNS stopped resolving, so it was rolled back. */
+    /** The entry was applied but DNS stopped resolving, so another server was used. */
     data class RolledBack(val config: DnsConfig, val restoredName: String) : SwitchResult
+
+    /** The entry didn't answer and no other saved server did either: Private DNS is off. */
+    data class TurnedOff(val config: DnsConfig) : SwitchResult
 
     /** WRITE_SECURE_SETTINGS hasn't been granted. */
     data object NoPermission : SwitchResult
@@ -48,13 +51,41 @@ val SwitchResult.message: String
         is SwitchResult.Blocked ->
             "${config.name} seems blocked on this network (port 853), so it wasn't applied"
         is SwitchResult.RolledBack ->
-            "${config.name} didn't answer, switched back to $restoredName"
+            "${config.name} didn't answer, switched to $restoredName"
+        is SwitchResult.TurnedOff ->
+            "${config.name} didn't answer and none of your DNS servers is reachable here, " +
+                "so Private DNS is off"
         SwitchResult.NoPermission -> "Couldn't change DNS – grant permission via ADB"
+    }
+
+/** Outcome of [DnsSwitcher.failover]. */
+sealed interface FailoverResult {
+    /** The setting was already the best working one (or nothing could be judged). */
+    data object Unchanged : FailoverResult
+
+    /** Switched to [config], the first saved server that works on this network. */
+    data class Switched(val config: DnsConfig) : FailoverResult
+
+    /** None of the saved servers answered, so Private DNS was turned off. */
+    data object TurnedOff : FailoverResult
+
+    /** WRITE_SECURE_SETTINGS hasn't been granted. */
+    data object NoPermission : FailoverResult
+}
+
+/** User-facing description of an automatic change, or null if nothing changed. */
+val FailoverResult.message: String?
+    get() = when (this) {
+        is FailoverResult.Switched -> "Switched to ${config.name}, the first of your DNS servers that works here"
+        FailoverResult.TurnedOff -> "None of your DNS servers is reachable here, so Private DNS is off"
+        FailoverResult.Unchanged, FailoverResult.NoPermission -> null
     }
 
 /**
  * Switches Private DNS safely: checks that a DoT server is reachable before
- * applying it, then confirms that DNS still resolves and rolls back if not.
+ * applying it, then confirms that DNS still resolves. When a server doesn't
+ * work, the saved servers are tried in list order (the list is the priority
+ * order) and, if none works, Private DNS is turned off.
  *
  * Android's strict Private DNS mode never falls back to plain DNS, so a server
  * whose port 853 is filtered would otherwise leave the device offline.
@@ -65,12 +96,17 @@ object DnsSwitcher {
     private const val SETTLE_DELAY_MS = 300L
     private const val RETRY_DELAY_MS = 250L
     private const val PROBE_HOST = "connectivitycheck.gstatic.com"
+    private const val CURRENT_CHECK_TIMEOUT_MS = 2_000L
+    private const val OPEN_CHECK_INTERVAL_MS = 20_000L
 
     // Outlives tiles and short-lived activities so the verification can finish.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
 
-    private val automatic = DnsConfig(id = "rollback-auto", name = "Automatic", mode = DnsMode.AUTOMATIC)
+    private val off = DnsConfig(id = "fallback-off", name = "Off", mode = DnsMode.OFF)
+
+    @Volatile private var lastOpenCheckAt = 0L
+    @Volatile private var lastOpenCheckNetwork = Long.MIN_VALUE
 
     /** Run [switch] in an app-wide scope and deliver the result on the main thread. */
     fun launch(context: Context, config: DnsConfig, onResult: (SwitchResult) -> Unit = {}): Job {
@@ -113,25 +149,97 @@ object DnsSwitcher {
                 return@withContext SwitchResult.Applied(config)
             }
 
-            // 3. Roll back: the previous setting if it still works, else Automatic.
+            // 3. Fall back along the priority list, or to Off if nothing answers.
             ReachabilityChecker.markBlocked(app, config.hostname)
-            val restored = rollback(app, previous, config)
-            val savedIds = repo.getConfigs().map { it.id }
-            repo.setActiveId(restored.id.takeIf { it in savedIds })
-            SwitchResult.RolledBack(config, restored.name)
+            when (val result = failoverLocked(app, restoreIfOffline = previous)) {
+                is FailoverResult.Switched -> SwitchResult.RolledBack(config, result.config.name)
+                FailoverResult.TurnedOff -> SwitchResult.TurnedOff(config)
+                FailoverResult.NoPermission -> SwitchResult.NoPermission
+                FailoverResult.Unchanged -> SwitchResult.RolledBack(config, previous.name)
+            }
         }
     }
 
-    private suspend fun rollback(context: Context, previous: DnsConfig, failed: DnsConfig): DnsConfig {
-        val samePlace = previous.mode == failed.mode &&
-            previous.hostname.equals(failed.hostname, ignoreCase = true)
-        if (!samePlace) {
-            DnsManager.apply(context, previous)
-            if (previous.mode != DnsMode.HOSTNAME || verify(context)) return previous
-        }
-        DnsManager.apply(context, automatic)
-        return automatic
+    /**
+     * Keep the highest-priority working server active: the first saved DoT entry
+     * (in list order) that is reachable and answers DNS queries. If none does,
+     * Private DNS is turned off so the device stays online.
+     */
+    suspend fun failover(context: Context): FailoverResult =
+        mutex.withLock { failoverLocked(context.applicationContext, restoreIfOffline = null) }
+
+    /** [failover], but only when the user has automatic fallback turned on. */
+    suspend fun autoFailover(context: Context): FailoverResult {
+        val app = context.applicationContext
+        if (!DnsRepository(app).isAutoFailoverEnabled()) return FailoverResult.Unchanged
+        return failover(app)
     }
+
+    /**
+     * [autoFailover] for when the app or the Quick Settings panel is opened; runs
+     * at most every [OPEN_CHECK_INTERVAL_MS] on the same network.
+     */
+    suspend fun autoFailoverOnOpen(context: Context): FailoverResult {
+        val app = context.applicationContext
+        val network = app.getSystemService(ConnectivityManager::class.java)?.activeNetwork?.networkHandle ?: 0L
+        val now = SystemClock.elapsedRealtime()
+        if (network == lastOpenCheckNetwork && now - lastOpenCheckAt < OPEN_CHECK_INTERVAL_MS) {
+            return FailoverResult.Unchanged
+        }
+        lastOpenCheckNetwork = network
+        lastOpenCheckAt = now
+        return autoFailover(app)
+    }
+
+    /**
+     * @param restoreIfOffline what to put back if the network turns out to have no
+     *   connectivity at all (nothing can be judged then); defaults to the current setting.
+     */
+    private suspend fun failoverLocked(app: Context, restoreIfOffline: DnsConfig?): FailoverResult =
+        withContext(Dispatchers.IO) {
+            if (!DnsManager.hasPermission(app)) return@withContext FailoverResult.NoPermission
+            val repo = DnsRepository(app)
+            val configs = repo.getConfigs()
+            val servers = configs.filter { it.mode == DnsMode.HOSTNAME && it.hostname.isNotBlank() }
+            if (servers.isEmpty()) return@withContext FailoverResult.Unchanged
+
+            val original = currentConfig(app, configs)
+            val current = DnsManager.findMatch(servers, original.mode, original.hostname)
+            var touched = false
+
+            val currentWorks = resolveOnce(app, CURRENT_CHECK_TIMEOUT_MS)
+            if (!currentWorks) {
+                // A broken strict server also breaks the lookups the tests rely on,
+                // so test from plain DNS. If even that fails, the network is down.
+                if (original.mode != DnsMode.OFF) {
+                    DnsManager.apply(app, off)
+                    touched = true
+                }
+                if (!verify(app)) {
+                    if (touched) DnsManager.apply(app, restoreIfOffline ?: original)
+                    return@withContext FailoverResult.Unchanged
+                }
+            }
+
+            val reach = ReachabilityChecker.checkAll(app, servers.map { it.hostname })
+            for (server in servers) {
+                if (reach[server.hostname.trim()] == Reachability.BLOCKED) continue
+                if (server == current && currentWorks && !touched) return@withContext FailoverResult.Unchanged
+                if (!DnsManager.apply(app, server)) return@withContext FailoverResult.NoPermission
+                touched = true
+                if (verify(app)) {
+                    repo.setActiveId(server.id)
+                    return@withContext if (server == current) FailoverResult.Unchanged
+                    else FailoverResult.Switched(server)
+                }
+                ReachabilityChecker.markBlocked(app, server.hostname)
+            }
+
+            // Nothing answered: plain DNS keeps the device online.
+            DnsManager.apply(app, off)
+            repo.setActiveId(configs.firstOrNull { it.mode == DnsMode.OFF }?.id)
+            if (original.mode == DnsMode.OFF) FailoverResult.Unchanged else FailoverResult.TurnedOff
+        }
 
     /** The live system setting, as a saved entry when one matches. */
     private fun currentConfig(context: Context, configs: List<DnsConfig>): DnsConfig {
